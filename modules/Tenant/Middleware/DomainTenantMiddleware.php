@@ -18,8 +18,8 @@ class DomainTenantMiddleware
 
             $parts = explode('.', $header);
 
-            $domain = implode('.', array_slice($parts, -2));
-            $subdomain = implode('.', array_slice($parts, 0, count($parts) - 2));
+            $domain = implode('.', array_slice($parts, -3));
+            $subdomain = implode('.', array_slice($parts, 0, count($parts) - 3));
 
             $parameterDomain = SystemConfiguration::where('key', 'domain')->first();
 
