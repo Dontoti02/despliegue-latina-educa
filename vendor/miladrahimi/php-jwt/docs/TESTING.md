@@ -1,0 +1,74 @@
+# Testing
+
+## Running
+
+```bash
+./vendor/bin/phpunit                               # whole suite (testsuite "main")
+./vendor/bin/phpunit tests/ParserTest.php          # one file
+./vendor/bin/phpunit --filter test_simple_example  # one test
+```
+
+`phpunit.xml` defines one testsuite `main` → `./tests`, coverage over `./src`.
+There is no `composer test` script — call the binary directly.
+Local coverage without pcov/xdebug: `phpdbg -qrr vendor/bin/phpunit --coverage-text`.
+EdDSA/Ed25519 tests need `ext-sodium`; Ed448 tests skip themselves unless `OPENSSL_KEYTYPE_ED448` is defined
+(PHP 8.4+), and the below-8.4 guard tests skip themselves everywhere else.
+CI runs on PHP 7.4–8.5; new tests must pass on 7.4.
+
+## Mutation testing
+
+Infection (`infection.json5`) runs in CI (`mutation.yml`, PHP 8.5) with `minMsi`/`minCoveredMsi` at 100%: every
+mutant it generates must be killed by the suite. It is not a Composer dependency — run it locally via the phar
+(`XDEBUG_MODE=coverage php infection.phar --threads=max`, or with pcov). When a mutant survives, write a test
+that kills it; extend the config's per-mutator `ignore` lists only for provably equivalent mutants, and document
+the proof in a comment next to the entry. Tests asserting OpenSSL error-queue messages must make the queue state
+deterministic first: drain it (`while (openssl_error_string() !== false)`) and, where the operation under test
+does not queue an error on every platform, seed a known one (e.g. `openssl_pkey_get_private('not-a-valid-key')`).
+
+## Layout
+
+`tests/` mirrors `src/`.
+`src/Foo/Bar.php` → `tests/Foo/BarTest.php`, namespace `MiladRahimi\Jwt\Tests\Foo`.
+
+## Base `TestCase`
+
+Every test extends `MiladRahimi\Jwt\Tests\TestCase` (not PHPUnit's directly).
+It provides via `setUp()`:
+
+- `$sampleClaims` — canonical claims (`sub`, `exp`, `nbf`, `iat`, `iss`), keyed by `PublicClaimNames`.
+- `$sampleJwt` — a precomputed HS256 token for `$sampleClaims`, secret `'12345678901234567890123456789012'`.
+
+Override `setUp()` only by calling `parent::setUp()` first.
+
+## Conventions
+
+- Each test file starts with `declare(strict_types=1);` (same as `src/`).
+- Method names: snake_case, `test_<action>_it_should_<expectation>`; getters use `test_set_and_get_<thing>`.
+- Methods that throw carry `@throws Throwable`.
+- "No exception" success paths end with `$this->assertTrue(true)`.
+- Value checks use `assertEquals`; strict/identity checks use `assertSame`.
+- Failure paths use `expectException(...)`, plus `expectExceptionMessage(...)` /
+  `expectExceptionMessageMatches(...)` where the message matters.
+
+## Key assets (`assets/keys/`)
+
+Test-only keys: `rsa-*.pem`, `ecdsa256/256k/384/512` pairs, `ed25519.sec`/`.pub` (raw base64 — decode before
+use), `ed448-*.pem`, `x448-private.pem` (loads but cannot sign — Ed448's signing-failure case), and
+`assets/file.empty` for invalid-key cases.
+The Ed448 interop vector in `tests/InteropTest.php` is signed with `ed448-private.pem` via the OpenSSL CLI —
+regenerate the keys and the vector together or not at all.
+Reference PEM keys by `__DIR__`-relative path (depth varies by nesting).
+The RSA-PSS tests additionally hold fixed odd-size RSA keys (2047/2041/2042 bits) as constants in
+`tests/Cryptography/Algorithms/RsaPss/KeyFixtures.php`, paired with OpenSSL CLI signature vectors in the test
+classes — the odd sizes reach EMSA-PSS paths byte-aligned keys never hit, so regenerate keys and vectors
+together or not at all.
+
+> ⚠️ These are test keys only — never treat them as production keys.
+
+## Templates
+
+- **Algorithm** (`tests/Cryptography/Algorithms/<Family>/`): sign-then-verify (ends `assertTrue(true)`), a
+  mismatched-plaintext case expecting `InvalidSignatureException`, plus getter checks.
+- **Key** (`tests/Cryptography/Keys/`): valid-from-file and valid-from-string both non-null, `test_id`, and
+  invalid path/file cases expecting `InvalidKeyException`.
+- **End-to-end**: add a round-trip to `tests/ExamplesTest.php` when changing a README example.

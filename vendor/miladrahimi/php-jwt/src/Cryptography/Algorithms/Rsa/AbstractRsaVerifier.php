@@ -1,0 +1,44 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MiladRahimi\Jwt\Cryptography\Algorithms\Rsa;
+
+use MiladRahimi\Jwt\Cryptography\Keys\RsaPublicKey;
+use MiladRahimi\Jwt\Cryptography\NamedVerifier;
+use MiladRahimi\Jwt\Exceptions\InvalidSignatureException;
+
+abstract class AbstractRsaVerifier implements NamedVerifier
+{
+    use Algorithm;
+
+    protected RsaPublicKey $publicKey;
+
+    public function __construct(RsaPublicKey $publicKey)
+    {
+        $this->publicKey = $publicKey;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function verify(string $plain, string $signature): void
+    {
+        if (openssl_verify($plain, $signature, $this->publicKey->getResource(), $this->algorithm()) !== 1) {
+            throw new InvalidSignatureException(openssl_error_string() ?: 'The signature is not valid.');
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function kid(): ?string
+    {
+        return $this->publicKey->getId();
+    }
+
+    public function getPublicKey(): RsaPublicKey
+    {
+        return $this->publicKey;
+    }
+}

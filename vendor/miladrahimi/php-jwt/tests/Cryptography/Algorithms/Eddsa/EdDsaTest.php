@@ -1,0 +1,177 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MiladRahimi\Jwt\Tests\Cryptography\Algorithms\Eddsa;
+
+use MiladRahimi\Jwt\Cryptography\Algorithms\Eddsa\EdDsaSigner;
+use MiladRahimi\Jwt\Cryptography\Algorithms\Eddsa\EdDsaVerifier;
+use MiladRahimi\Jwt\Cryptography\Keys\EdDsaPrivateKey;
+use MiladRahimi\Jwt\Cryptography\Keys\EdDsaPublicKey;
+use MiladRahimi\Jwt\Exceptions\InvalidSignatureException;
+use MiladRahimi\Jwt\Exceptions\SigningException;
+use MiladRahimi\Jwt\Tests\TestCase;
+use SodiumException;
+use Throwable;
+
+class EdDsaTest extends TestCase
+{
+    protected EdDsaPrivateKey $privateKey;
+    protected EdDsaPublicKey $publicKey;
+
+    public function setUp(): void
+    {
+        parent::setUp();
+
+        $this->privateKey = new EdDsaPrivateKey(
+            base64_decode(file_get_contents(__DIR__ . '/../../../../assets/keys/ed25519.sec')),
+            'id-1'
+        );
+        $this->publicKey = new EdDsaPublicKey(
+            base64_decode(file_get_contents(__DIR__ . '/../../../../assets/keys/ed25519.pub')),
+            'id-1'
+        );
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_signer_and_verifier_they_should_sign_and_verify_with_the_pair_key()
+    {
+        $plain = 'Text';
+
+        $signer = new EdDsaSigner($this->privateKey);
+        $signature = $signer->sign($plain);
+
+        $verifier = new EdDsaVerifier($this->publicKey);
+        $verifier->verify($plain, $signature);
+
+        $this->assertTrue(true);
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_signer_and_verifier_they_should_fail_with_different_plains()
+    {
+        $signer = new EdDsaSigner($this->privateKey);
+        $signature = $signer->sign('Header Payload');
+
+        $verifier = new EdDsaVerifier($this->publicKey);
+
+        $this->expectException(InvalidSignatureException::class);
+        $verifier->verify('Different!', $signature);
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_signer_it_should_fail_with_invalid_key()
+    {
+        $signer = new EdDsaSigner(new EdDsaPrivateKey('Invalid Key!'));
+
+        try {
+            $signer->sign('Header Payload');
+            $this->fail('A SigningException was expected.');
+        } catch (SigningException $e) {
+            $this->assertSame('Cannot sign the message using the Sodium extension.', $e->getMessage());
+            $this->assertSame(0, $e->getCode());
+            $this->assertInstanceOf(SodiumException::class, $e->getPrevious());
+        }
+    }
+
+    /**
+     * A Sodium failure (here: a signature of the wrong size) is wrapped in an InvalidSignatureException.
+     *
+     * @throws Throwable
+     */
+    public function test_verify_with_a_malformed_signature_it_should_fail()
+    {
+        $verifier = new EdDsaVerifier($this->publicKey);
+
+        try {
+            $verifier->verify('Header Payload', 'wrong-size-signature');
+            $this->fail('An InvalidSignatureException was expected.');
+        } catch (InvalidSignatureException $e) {
+            $this->assertSame('Sodium cannot verify the signature.', $e->getMessage());
+            $this->assertSame(0, $e->getCode());
+            $this->assertInstanceOf(SodiumException::class, $e->getPrevious());
+        }
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_verify_with_an_empty_signature_it_should_fail()
+    {
+        $verifier = new EdDsaVerifier($this->publicKey);
+
+        $this->expectException(InvalidSignatureException::class);
+        $this->expectExceptionMessage('The signature is not valid.');
+        $verifier->verify('Header Payload', '');
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_verify_with_a_different_key_it_should_fail()
+    {
+        $signature = (new EdDsaSigner($this->privateKey))->sign('Text');
+
+        $otherPublicKey = new EdDsaPublicKey(sodium_crypto_sign_publickey(sodium_crypto_sign_keypair()));
+        $verifier = new EdDsaVerifier($otherPublicKey);
+
+        $this->expectException(InvalidSignatureException::class);
+        $verifier->verify('Text', $signature);
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_verifier_it_should_fail_with_invalid_key()
+    {
+        $verifier = new EdDsaVerifier(new EdDsaPublicKey('Invalid Key!'));
+
+        $this->expectException(InvalidSignatureException::class);
+        $this->expectExceptionMessage('Sodium cannot verify the signature.');
+        $verifier->verify('Header Payload', str_repeat('x', 64));
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_set_and_get_private_key()
+    {
+        $signer = new EdDsaSigner($this->privateKey);
+
+        $this->assertSame($this->privateKey, $signer->getPrivateKey());
+        $this->assertSame('EdDSA', $signer->name());
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_set_and_get_public_key()
+    {
+        $verifier = new EdDsaVerifier($this->publicKey);
+        $this->assertSame($this->publicKey, $verifier->getPublicKey());
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_name()
+    {
+        $verifier = new EdDsaVerifier($this->publicKey);
+        $this->assertSame('EdDSA', $verifier->name());
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function test_kid()
+    {
+        $verifier = new EdDsaVerifier($this->publicKey);
+        $this->assertSame($this->publicKey->getId(), $verifier->kid());
+    }
+}
