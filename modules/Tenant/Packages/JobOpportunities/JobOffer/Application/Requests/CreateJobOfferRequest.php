@@ -1,0 +1,47 @@
+<?php
+
+namespace Modules\Tenant\Packages\JobOpportunities\JobOffer\Application\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\UnauthorizedException;
+use Modules\Tenant\Packages\User\Enums\RolTenant;
+use Modules\Tenant\Models\User;
+
+class CreateJobOfferRequest extends FormRequest
+{
+  public function authorize(): bool
+  {
+    $user = User::authenticated();
+    $isAdmin = $user->hasRole(RolTenant::ADMINISTRADOR);
+    $isCompany = $user->hasRole(RolTenant::COMPANY);
+    if ($isAdmin || $isCompany) {
+      return true;
+    }
+    abort(403, 'Acceso no autorizado');
+    throw new UnauthorizedException('Acceso no autorizado');
+  }
+
+  public function rules(): array
+  {
+    return [
+      'title'            => ['required', 'string', 'max:255'],
+      'description'      => ['required', 'string'],
+      'requirements'     => ['required', 'string'],
+      'benefits'         => ['required', 'string'],
+      'companyId'        => ['nullable', 'integer'],
+      'categoryId'       => ['nullable', 'integer'],
+      'locationId'       => ['nullable', 'integer'],
+      'contractTypeId'   => ['nullable', 'integer'],
+      'scheduleId'       => ['nullable', 'integer'],
+      'salary'           => ['required', 'numeric'],
+      'salaryCurrency'   => ['required', 'string', 'max:10'],
+      'address'          => ['required', 'string', 'max:255'],
+      'department'       => ['required', 'string', 'max:100'],
+      'province'         => ['required', 'string', 'max:100'],
+      'country'          => ['required', 'string', 'max:100'],
+      'publicationDate'  => ['required', 'date'],
+      'attachments'      => ['nullable', 'array'],
+      'attachments.*'    => ['file'],
+    ];
+  }
+}
